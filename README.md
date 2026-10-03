@@ -45,6 +45,7 @@ Menü tabanlı, hızlı ve sade bir port tarayıcı. nmap motorunu kullanır; nm
 git clone https://github.com/vastrel403/python-port-scanner.git
 cd python-port-scanner
 pip install rich python-nmap
+python scan.py
 ```
 
 nmap kurulumu:
