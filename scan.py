@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Vastrel Port Scanner - Made by Vastrel
 
-Tamamen menü tabanlı port tarayıcı. Gereksinimler:
+A fully menu-driven port scanner. Requirements:
     pip install python-nmap rich
-nmap profilleri için sistemde nmap kurulu olmalı (Python TCP profili nmap gerektirmez).
+nmap must be installed on the system for the nmap-based profiles (the Python TCP profile does not require nmap).
 """
 import csv
 import html
@@ -25,7 +25,6 @@ from pathlib import Path
 from rich import box
 from rich.console import Console
 from rich.markup import escape
-from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (BarColumn, Progress, SpinnerColumn, TaskProgressColumn,
                            TextColumn, TimeElapsedColumn, TimeRemainingColumn)
@@ -36,14 +35,14 @@ from menu import ACCENT, BORDER, MUTED, PANEL_BOX, TABLE_BOX, Menu, tag
 
 try:
     import nmap
-except ImportError:  # python-nmap kurulu değilse Python TCP tarayıcı yine çalışır
+except ImportError:  # if python-nmap isn't installed, the Python TCP scanner still works
     nmap = None
 
 console = Console()
 
 
 class Ask(Prompt):
-    illegal_choice_message = "[prompt.invalid.choice]  Geçersiz seçim, listeden birini girin"
+    illegal_choice_message = "[prompt.invalid.choice]  Invalid choice, pick one from the list"
 
 
 class MainAsk(Ask):
@@ -51,41 +50,41 @@ class MainAsk(Ask):
 
 
 def ask(text, **kw):
-    cls = MainAsk if text is PROMPT else Ask
+    cls = MainAsk if text == PROMPT else Ask
     return cls.ask(text, console=console, **kw)
 
 
 PROMPT = f"\n  [bold {ACCENT}]vastrel[/] [{MUTED}]>[/]"
 
 
-# ====================================================================== mesaj yardımcıları
+# ====================================================================== message helpers
 def ok(msg):
-    console.print(f"  [green]TAMAM[/]   {msg}")
+    console.print(f"  [green]OK[/]      {msg}")
 
 
 def err(msg):
-    console.print(f"  [red]HATA[/]    {msg}")
+    console.print(f"  [red]ERROR[/]   {msg}")
 
 
 def warn(msg):
-    console.print(f"  [yellow]UYARI[/]   {msg}")
+    console.print(f"  [yellow]WARNING[/] {msg}")
 
 
 def note(msg):
     console.print(f"  [{MUTED}]{msg}[/]")
 
 
-# ====================================================================== sabitler
+# ====================================================================== constants
 TIMING_NAMES = ["paranoid", "sneaky", "polite", "normal", "aggressive", "insane"]
 
 PROFILES = {
-    "1": dict(name="Hızlı", desc="En popüler 100 port", engine="nmap", args=["-F"], ports=None, root=False),
-    "2": dict(name="Standart", desc="Port 1-1024", engine="nmap", args=[], ports="1-1024", root=False),
-    "3": dict(name="Tam", desc="Tüm portlar (1-65535)", engine="nmap", args=[], ports="1-65535", root=False),
-    "4": dict(name="Özel", desc="Kendi port listeni gir (örn. 22,80,8000-8100)", engine="nmap", args=[], ports="custom", root=False),
-    "5": dict(name="Gizli SYN", desc="Yarı açık (-sS) tarama, 1-1024", engine="nmap", args=["-sS"], ports="1-1024", root=True),
-    "6": dict(name="UDP", desc="En popüler 50 UDP portu", engine="nmap", args=["-sU", "--top-ports", "50"], ports=None, root=True),
-    "7": dict(name="Python TCP", desc="nmap'siz, çok thread'li, banner yakalar", engine="python", args=[], ports="custom", root=False),
+    "1": dict(name="Fast", desc="Top 100 most common ports", engine="nmap", args=["-F"], ports=None, root=False),
+    "2": dict(name="Standard", desc="Ports 1-1024", engine="nmap", args=[], ports="1-1024", root=False),
+    "3": dict(name="Full", desc="All ports (1-65535)", engine="nmap", args=[], ports="1-65535", root=False),
+    "4": dict(name="Custom", desc="Enter your own port list (e.g. 22,80,8000-8100)", engine="nmap", args=[], ports="custom", root=False),
+    "5": dict(name="Stealth SYN", desc="Half-open (-sS) scan, ports 1-1024", engine="nmap", args=["-sS"], ports="1-1024", root=True),
+    "6": dict(name="UDP", desc="Top 50 most common UDP ports", engine="nmap", args=["-sU", "--top-ports", "50"], ports=None, root=True),
+    "7": dict(name="Python TCP", desc="No nmap required, multi-threaded, grabs banners", engine="python", args=[], ports="custom", root=False),
 }
 
 HTTP_PORTS = {80, 8000, 8008, 8080, 8888}
@@ -95,11 +94,11 @@ HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?
                      r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
 RANGE_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}-\d{1,3}$")
 
-NMAP_HELP = ("nmap bulunamadı. Kurulum: Linux 'sudo apt install nmap'  |  macOS 'brew install nmap'  |  "
-             "Windows nmap.org/download. nmap gerektirmeyen Python TCP profili (7) kullanılabilir.")
+NMAP_HELP = ("nmap not found. Install it with: Linux 'sudo apt install nmap'  |  macOS 'brew install nmap'  |  "
+             "Windows nmap.org/download. You can also use the Python TCP profile (7), which doesn't need nmap.")
 
 
-# ====================================================================== veri modelleri
+# ====================================================================== data models
 @dataclass
 class Settings:
     targets: list = field(default_factory=list)
@@ -143,7 +142,7 @@ class Record:
     command: str
     started: str
     duration: float
-    kind: str = "ports"  # "ports" veya "hosts"
+    kind: str = "ports"  # "ports" or "hosts"
     hosts: list = field(default_factory=list)
 
     def open_keys(self):
@@ -153,7 +152,7 @@ class Record:
         return sum(1 for h in self.hosts for r in h.rows if r.state == state)
 
 
-# ====================================================================== yardımcılar
+# ====================================================================== helpers
 def is_admin():
     try:
         return os.geteuid() == 0
@@ -170,7 +169,7 @@ def nmap_available():
 
 
 def pause():
-    ask(f"\n  [{MUTED}]Menüye dönmek için Enter'a bas[/]", default="", show_default=False)
+    ask(f"\n  [{MUTED}]Press Enter to return to the menu[/]", default="", show_default=False)
 
 
 def clip(text, n=110):
@@ -179,14 +178,14 @@ def clip(text, n=110):
 
 
 def screen(menu, cfg, history):
-    """Alt ekranlar için: ekranı temizle, kompakt başlık ve bağlam satırını bas."""
+    """For sub-screens: clear the screen and print a compact header and context line."""
     menu.clear()
     menu.header(compact=True)
     menu.context(cfg, len(history))
 
 
 def valid_target(t):
-    """IP, CIDR, a.b.c.d-e aralığı veya alan adı. Başında '-' olamaz (argüman enjeksiyonu engeli)."""
+    """IP, CIDR, an a.b.c.d-e range, or a domain name. Cannot start with '-' (prevents argument injection)."""
     for parser in (ipaddress.ip_address, lambda x: ipaddress.ip_network(x, strict=False)):
         try:
             parser(t)
@@ -204,7 +203,7 @@ def valid_target(t):
 
 
 def parse_ports(text):
-    """'22,80,8000-8100' -> sıralı port listesi; geçersizse None."""
+    """'22,80,8000-8100' -> sorted port list; None if invalid."""
     ports = set()
     for part in text.replace(" ", "").split(","):
         if not part:
@@ -231,16 +230,16 @@ def ask_number(label, cast, lo, hi, default):
     try:
         v = cast(raw)
     except ValueError:
-        err("Geçersiz sayı.")
+        err("Invalid number.")
         return default
     if not lo <= v <= hi:
-        err(f"Değer {lo}-{hi} arasında olmalı.")
+        err(f"Value must be between {lo}-{hi}.")
         return default
     return v
 
 
 def fix_owner(*paths):
-    """sudo ile çalışırken oluşan dosyaların sahibini gerçek kullanıcıya ver."""
+    """When running under sudo, restore ownership of created files to the real user."""
     uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
     if not (uid and gid and hasattr(os, "chown")):
         return
@@ -251,36 +250,39 @@ def fix_owner(*paths):
             pass
 
 
-# ====================================================================== hedef belirleme
+# ====================================================================== target selection
 def set_target(cfg, state):
     console.print(Panel(
-        "  192.168.1.10          tek IP\n"
-        "  scanme.nmap.org       alan adı\n"
+        "  192.168.1.10          single IP\n"
+        "  scanme.nmap.org       domain name\n"
         "  192.168.1.0/24        CIDR\n"
-        "  192.168.1.1-50        aralık\n"
-        "  10.0.0.1, 10.0.0.5    birden fazla (virgül veya boşluk)\n"
-        "  @hedefler.txt         dosyadan (satır başına bir hedef, # yorum)",
-        title=f"[{MUTED}]HEDEF FORMATLARI[/]", title_align="left", border_style=BORDER,
+        "  192.168.1.1-50        range\n"
+        "  10.0.0.1, 10.0.0.5    multiple (comma or space separated)\n"
+        "  @targets.txt          from a file (one target per line, # for comments)",
+        title=f"[{MUTED}]TARGET FORMATS[/]", title_align="left", border_style=BORDER,
         box=PANEL_BOX, padding=(1, 2)))
-    raw = ask("\n  Hedef(ler)").strip()
+    raw = ask("\n  Target(s)").strip()
     if raw.startswith("@"):
         try:
             lines = Path(raw[1:].strip()).read_text(encoding="utf-8").splitlines()
         except OSError as e:
-            err(f"Dosya okunamadı: {escape(str(e))}")
+            err(f"Could not read file: {escape(str(e))}")
             return
         raw = " ".join(line.split("#")[0] for line in lines)
     items = list(dict.fromkeys(t for t in re.split(r"[,\s]+", raw) if t))
+    if not items:
+        err("No target entered.")
+        return
     bad = [t for t in items if not valid_target(t)]
-    if not items or bad:
-        err(f"Geçersiz hedef: {escape(', '.join(bad) or '(boş)')}")
+    if bad:
+        err(f"Invalid target(s): {escape(', '.join(bad))}")
         return
     cfg.targets = items
     state["authorized"] = False
-    ok(f"{len(items)} hedef ayarlandı.")
+    ok(f"{len(items)} target(s) set.")
 
 
-# ====================================================================== nmap motoru
+# ====================================================================== nmap engine
 def build_args(cfg, prof, admin):
     args = []
     if cfg.skip_ping:
@@ -296,7 +298,7 @@ def build_args(cfg, prof, admin):
         if admin:
             args.append("-O")
         else:
-            warn("OS tespiti (-O) root ister, bu taramada atlandı.")
+            warn("OS detection (-O) requires root, skipped for this scan.")
     return list(dict.fromkeys(args))
 
 
@@ -309,17 +311,17 @@ def nmap_scan(cfg, targets, ports, args, profile_name, kind="ports"):
     start = time.time()
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        with console.status(f"  [bold white]{profile_name} taraması sürüyor[/] [{MUTED}](iptal: Ctrl+C)[/]",
+        with console.status(f"  [bold white]{profile_name} scan running[/] [{MUTED}](cancel: Ctrl+C)[/]",
                             spinner="dots2", spinner_style=ACCENT):
             nm.scan(hosts=" ".join(targets), ports=ports, arguments=" ".join(args))
     except KeyboardInterrupt:
-        warn("Tarama kullanıcı tarafından iptal edildi.")
+        warn("Scan cancelled by user.")
         return None
     except nmap.PortScannerError as e:
-        err(f"nmap hatası: {escape(str(e).strip())}")
+        err(f"nmap error: {escape(str(e).strip())}")
         return None
     except Exception as e:
-        err(f"Beklenmeyen hata: {escape(str(e))}")
+        err(f"Unexpected error: {escape(str(e))}")
         return None
 
     try:
@@ -337,7 +339,7 @@ def nmap_scan(cfg, targets, ports, args, profile_name, kind="ports"):
         h = HostInfo(ip=ip, hostname=hd.hostname(), state=hd.state())
         matches = hd.get("osmatch") or []
         if matches:
-            h.os = f"{matches[0].get('name', '?')} (%{matches[0].get('accuracy', '?')})"
+            h.os = f"{matches[0].get('name', '?')} ({matches[0].get('accuracy', '?')}%)"
         h.mac = hd.get("addresses", {}).get("mac", "")
         for proto in hd.all_protocols():
             for p in sorted(hd[proto]):
@@ -354,7 +356,7 @@ def nmap_scan(cfg, targets, ports, args, profile_name, kind="ports"):
         hosts.append(h)
 
     if not hosts:
-        warn("Hiçbir host yanıt vermedi (kapalı, engelli veya hedef hatalı olabilir).")
+        warn("No host responded (it may be down, filtered, or the target invalid).")
         return None
     return Record(profile=profile_name, target=", ".join(targets), command=nm.command_line(),
                   started=started, duration=time.time() - start, kind=kind, hosts=hosts)
@@ -365,10 +367,10 @@ def ping_sweep(cfg):
         err(NMAP_HELP)
         return None
     args = ["-sn", "-n", f"-T{cfg.timing}"]
-    return nmap_scan(cfg, cfg.targets, None, args, "Ağ keşfi", kind="hosts")
+    return nmap_scan(cfg, cfg.targets, None, args, "Network discovery", kind="hosts")
 
 
-# ====================================================================== Python TCP motoru
+# ====================================================================== Python TCP engine
 def probe(ip, port, timeout):
     try:
         with socket.create_connection((ip, port), timeout=timeout) as s:
@@ -396,7 +398,7 @@ def grab_banner(sock, ip, port, timeout):
 
 
 def expand_targets(targets):
-    """Hedefleri {ip: alan_adı} sözlüğüne aç (Python tarayıcı için)."""
+    """Expand targets into an {ip: hostname} dict (for the Python scanner)."""
     out = {}
     for t in targets:
         try:
@@ -408,7 +410,7 @@ def expand_targets(targets):
         try:
             net = ipaddress.ip_network(t, strict=False)
             if net.num_addresses > 1024:
-                warn(f"{escape(t)} çok büyük (en fazla /22), atlandı.")
+                warn(f"{escape(t)} is too large (max /22), skipped.")
                 continue
             for ip in (net.hosts() if net.num_addresses > 2 else net):
                 out[str(ip)] = ""
@@ -424,7 +426,7 @@ def expand_targets(targets):
         try:
             out[socket.gethostbyname(t)] = t
         except OSError:
-            warn(f"{escape(t)} çözümlenemedi, atlandı.")
+            warn(f"{escape(t)} could not be resolved, skipped.")
     return out
 
 
@@ -432,11 +434,11 @@ def python_scan(cfg):
     ports = parse_ports(cfg.ports)
     ips = expand_targets(cfg.targets)
     if not ports or not ips:
-        err("Geçerli port veya hedef yok.")
+        err("No valid ports or targets.")
         return None
     total = len(ips) * len(ports)
     if total > 500_000:
-        if ask(f"  [yellow]{total:,} bağlantı denenecek. Devam?[/]", choices=["e", "h"], default="h") == "h":
+        if ask(f"  [yellow]{total:,} connections will be attempted. Continue?[/]", choices=["y", "n"], default="n") == "n":
             return None
 
     start = time.time()
@@ -450,7 +452,7 @@ def python_scan(cfg):
                       BarColumn(bar_width=None, complete_style=ACCENT, finished_style=ACCENT),
                       TaskProgressColumn(), TimeElapsedColumn(), TimeRemainingColumn(),
                       console=console, transient=True) as prog:
-            task = prog.add_task(f"  TCP taraması ({len(ips)} host x {len(ports)} port)", total=total)
+            task = prog.add_task(f"  TCP scan ({len(ips)} hosts x {len(ports)} ports)", total=total)
             for fut in as_completed(futures):
                 ip, p = futures[fut]
                 st, banner = fut.result()
@@ -460,31 +462,31 @@ def python_scan(cfg):
                 if st == "open":
                     hosts[ip].rows.append(Row(ip, "tcp", p, st, service_name(p), banner or "-", "-"))
     except KeyboardInterrupt:
-        warn("Tarama iptal edildi, kısmi sonuçlar gösteriliyor.")
+        warn("Scan cancelled, showing partial results.")
     finally:
         ex.shutdown(wait=False, cancel_futures=True)
 
     result = []
     for ip, h in hosts.items():
         h.rows.sort(key=lambda r: r.port)
-        h.state = "up" if ip in responded else "yanıt yok"
+        h.state = "up" if ip in responded else "no response"
         if ip in responded or len(hosts) <= 5:
             result.append(h)
     if not result:
-        warn("Hiçbir host yanıt vermedi.")
+        warn("No host responded.")
         return None
     return Record(profile="Python TCP", target=", ".join(cfg.targets),
                   command=f"python-tcp ports={cfg.ports} threads={cfg.threads} timeout={cfg.timeout}s",
                   started=started, duration=time.time() - start, hosts=result)
 
 
-# ====================================================================== gösterim
+# ====================================================================== display
 def show_record(rec):
     console.print()
     if rec.kind == "hosts":
-        t = Table(title=f"CANLI CİHAZLAR ({len(rec.hosts)})", title_justify="left", title_style=f"bold {ACCENT}",
+        t = Table(title=f"LIVE HOSTS ({len(rec.hosts)})", title_justify="left", title_style=f"bold {ACCENT}",
                   box=TABLE_BOX, border_style=BORDER, header_style=MUTED, pad_edge=False)
-        for c in ("IP", "HOSTNAME", "MAC", "DURUM"):
+        for c in ("IP", "HOSTNAME", "MAC", "STATE"):
             t.add_column(c)
         for h in rec.hosts:
             t.add_row(escape(h.ip), escape(h.hostname or "-"), escape(h.mac or "-"), "[green]up[/]")
@@ -492,25 +494,25 @@ def show_record(rec):
     else:
         for h in rec.hosts:
             title = escape(h.ip) + (f"  ({escape(h.hostname)})" if h.hostname else "")
-            cap = f"durum: {escape(h.state)}"
+            cap = f"state: {escape(h.state)}"
             if h.os:
                 cap += f"   os: {escape(h.os)}"
             if h.mac:
                 cap += f"   mac: {escape(h.mac)}"
             if not h.rows:
                 console.print(f"  [bold {ACCENT}]{title}[/]  [{MUTED}]{cap}[/]")
-                note("Açık port bulunamadı.\n")
+                note("No open ports found.\n")
                 continue
             has_script = any(r.script != "-" for r in h.rows)
-            # Açık portlar ┌─┬─┐ çerçeveli klasik tablo olarak basılır
+            # Open ports are printed as a classic framed ┌─┬─┐ table
             t = Table(title=title, title_justify="left", title_style=f"bold {ACCENT}",
                       caption=cap, caption_justify="left", caption_style=MUTED,
                       box=box.SQUARE, border_style=BORDER, header_style=f"bold {ACCENT}",
                       padding=(0, 2), pad_edge=True)
             t.add_column("PORT", justify="right", style="bold white")
-            t.add_column("DURUM")
-            t.add_column("SERVİS", style=ACCENT)
-            t.add_column("SÜRÜM / BANNER", max_width=48)
+            t.add_column("STATE")
+            t.add_column("SERVICE", style=ACCENT)
+            t.add_column("VERSION / BANNER", max_width=48)
             if has_script:
                 t.add_column("SCRIPT", max_width=60)
             for r in h.rows:
@@ -524,17 +526,17 @@ def show_record(rec):
 
     filtered = rec.count("filtered") + rec.count("open|filtered")
     console.print(Panel(
-        f"HOST [bold white]{len(rec.hosts)}[/]     AÇIK [bold green]{rec.count('open')}[/]     "
-        f"FILTERED [yellow]{filtered}[/]     SÜRE [bold white]{rec.duration:.1f} sn[/]\n"
+        f"HOST [bold white]{len(rec.hosts)}[/]     OPEN [bold green]{rec.count('open')}[/]     "
+        f"FILTERED [yellow]{filtered}[/]     DURATION [bold white]{rec.duration:.1f}s[/]\n"
         f"[{MUTED}]{escape(rec.command)}[/]",
-        title=f"[{MUTED}]ÖZET[/]", title_align="left", border_style=BORDER, box=PANEL_BOX, padding=(0, 2)))
+        title=f"[{MUTED}]SUMMARY[/]", title_align="left", border_style=BORDER, box=PANEL_BOX, padding=(0, 2)))
 
 
 def history_table(history):
-    t = Table(title="TARAMA GEÇMİŞİ", title_justify="left", title_style=f"bold {ACCENT}",
+    t = Table(title="SCAN HISTORY", title_justify="left", title_style=f"bold {ACCENT}",
               box=TABLE_BOX, border_style=BORDER, header_style=MUTED, pad_edge=False)
     t.add_column("", justify="right", style=f"bold {ACCENT}")
-    for c in ("ZAMAN", "PROFİL", "HEDEF", "HOST", "AÇIK", "SÜRE"):
+    for c in ("TIME", "PROFILE", "TARGET", "HOSTS", "OPEN", "DURATION"):
         t.add_column(c)
     for i, r in enumerate(history, 1):
         t.add_row(tag(i), r.started, r.profile, escape(clip(r.target, 30)),
@@ -543,13 +545,13 @@ def history_table(history):
     console.print()
 
 
-def pick_record(history, label="Tarama numarası", default=None):
+def pick_record(history, label="Scan number", default=None):
     history_table(history)
     choices = [str(i) for i in range(1, len(history) + 1)]
     return history[int(ask(f"  {label}", choices=choices, default=default or str(len(history)))) - 1]
 
 
-# ====================================================================== HTML rapor
+# ====================================================================== HTML report
 REPORT_CSS = """
 :root{--bg:#000;--line:#1a1a1a;--line2:#2c2c2c;--t:#f5f5f5;--m:#777;--mx:-500px;--my:-500px}
 *{box-sizing:border-box}
@@ -560,7 +562,7 @@ font:14px/1.6 "Manrope",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,s
 ::selection{background:#fff;color:#000}
 ::-webkit-scrollbar{height:6px;width:6px}::-webkit-scrollbar-thumb{background:#2c2c2c;border-radius:9px}
 
-/* arka plan: fareyi izleyen ızgara + ışık + parçacıklar */
+/* background: mouse-following grid + light + particles */
 #fx{position:fixed;inset:0;z-index:0;pointer-events:none}
 body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 background-image:linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),
@@ -574,7 +576,7 @@ background:radial-gradient(520px circle at var(--mx) var(--my),rgba(255,255,255,
 background:linear-gradient(90deg,transparent,#fff,transparent);animation:sweep 3.4s cubic-bezier(.6,0,.4,1) infinite}
 @keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
 
-/* özel imleç */
+/* custom cursor */
 .cur,.dot{position:fixed;left:0;top:0;pointer-events:none;z-index:99;border-radius:50%;opacity:0}
 .cur{width:38px;height:38px;margin:-19px 0 0 -19px;border:1px solid rgba(255,255,255,.55);
 transition:width .25s,height .25s,margin .25s,background .25s,opacity .3s}
@@ -587,7 +589,7 @@ transition:width .25s,height .25s,margin .25s,background .25s,opacity .3s}
 
 .wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:56px 32px 72px}
 
-/* başlık */
+/* header */
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;
 padding-bottom:26px;margin-bottom:34px;border-bottom:1px solid var(--line);position:relative}
 header::after{content:"";position:absolute;left:0;bottom:-1px;height:1px;width:0;background:#fff;
@@ -601,7 +603,7 @@ background:linear-gradient(110deg,#4a4a4a 25%,#fff 45%,#fff 55%,#4a4a4a 75%);bac
 .stamp{color:var(--m);font-size:12.5px;text-align:right}
 .stamp b{color:var(--t);font-weight:600;display:block;font-size:14px}
 
-/* kartlar: ışık takibi + 3B eğim */
+/* cards: light tracking + 3D tilt */
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
 .card,.spot{position:relative;background:linear-gradient(180deg,#0b0b0b,#030303);
 border:1px solid var(--line);border-radius:16px;overflow:hidden}
@@ -623,7 +625,7 @@ dl{display:grid;grid-template-columns:110px 1fr;gap:10px 22px;margin:0 0 40px;pa
 dt{color:var(--m);padding-top:2px}
 dd{margin:0;word-break:break-word}
 
-/* arama + tablolar */
+/* search + tables */
 .tools{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 18px}
 h2{font-size:16px;margin:0;font-weight:700;letter-spacing:-.01em}
 input{background:#050505;border:1px solid var(--line2);color:var(--t);border-radius:99px;padding:10px 18px;
@@ -656,7 +658,7 @@ border:1px solid #fff;font-size:12px;font-weight:700;box-shadow:0 0 22px rgba(25
 footer{margin-top:54px;padding-top:20px;border-top:1px solid var(--line);color:var(--m);font-size:12.5px;
 display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
 
-/* giriş animasyonları (yalnızca JS çalışıyorsa) */
+/* entrance animations (only if JS runs) */
 .fx .rv{opacity:0;transform:translateY(30px) scale(.97);filter:blur(10px);
 transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1),filter .9s cubic-bezier(.2,.7,.2,1)}
 .fx .rv.in{opacity:1;transform:none;filter:none}
@@ -679,7 +681,7 @@ var R=document.documentElement,cur=document.getElementById('cur'),dot=document.g
 var fine=matchMedia('(hover:hover) and (pointer:fine)').matches;
 var tx=innerWidth/2,ty=innerHeight/2,cx=tx,cy=ty,M={x:-999,y:-999};
 
-/* imleç + ızgara ışığı */
+/* cursor + grid light */
 addEventListener('pointermove',function(e){
   tx=e.clientX;ty=e.clientY;M.x=tx;M.y=ty;
   R.style.setProperty('--mx',tx+'px');R.style.setProperty('--my',ty+'px');
@@ -690,7 +692,7 @@ document.addEventListener('pointerover',function(e){cur.classList.toggle('on',!!
 addEventListener('pointerdown',function(){cur.classList.add('down');});
 addEventListener('pointerup',function(){cur.classList.remove('down');});
 
-/* kart ışığı + 3B eğim */
+/* card light + 3D tilt */
 document.querySelectorAll('.spot').forEach(function(el){
   el.addEventListener('pointermove',function(e){
     var r=el.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
@@ -702,14 +704,14 @@ document.querySelectorAll('.spot').forEach(function(el){
   el.addEventListener('pointerleave',function(){if(el.classList.contains('card'))el.style.transform='';});
 });
 
-/* giriş animasyonu */
+/* entrance animation */
 var io=new IntersectionObserver(function(es){es.forEach(function(e){
   if(!e.isIntersecting)return;var t=e.target;t.classList.add('in');io.unobserve(t);
   setTimeout(function(){t.classList.remove('rv','in');t.style.transitionDelay='';},1500+(parseInt(t.style.transitionDelay)||0));
 });},{threshold:.06});
 document.querySelectorAll('.rv').forEach(function(el,i){el.style.transitionDelay=(i%7)*90+'ms';io.observe(el);});
 
-/* sayaç animasyonu */
+/* counter animation */
 document.querySelectorAll('[data-n]').forEach(function(el){
   var n=+el.dataset.n,d=+el.dataset.d||0,s=el.dataset.s||'',t0=null;
   function f(t){if(!t0)t0=t;var p=Math.min((t-t0)/1500,1),e=1-Math.pow(1-p,4);
@@ -717,12 +719,12 @@ document.querySelectorAll('[data-n]').forEach(function(el){
   requestAnimationFrame(f);
 });
 
-/* arama */
+/* search */
 var q=document.getElementById('q');
 if(q)q.addEventListener('input',function(){var v=q.value.toLowerCase();
   document.querySelectorAll('tbody tr').forEach(function(r){r.hidden=v!==''&&r.textContent.toLowerCase().indexOf(v)<0;});});
 
-/* parçacık ağı */
+/* particle network */
 var c=document.getElementById('fx'),x=c.getContext('2d'),W,H,P=[];
 function rs(){W=c.width=innerWidth;H=c.height=innerHeight;P=[];
   for(var i=0,n=Math.min(90,Math.floor(W*H/17000));i<n;i++)
@@ -753,8 +755,8 @@ REPORT_CSS += """
 .badge.o{border-color:#333;color:#777;box-shadow:none}.badge.o i{background:#777;animation:none}
 """
 
-BADGE = {"open": ("", "AÇIK"), "open|filtered": ("f", "AÇIK|FİLTRELİ"),
-         "filtered": ("f", "FİLTRELİ"), "closed": ("o", "KAPALI")}
+BADGE = {"open": ("", "OPEN"), "open|filtered": ("f", "OPEN|FILTERED"),
+         "filtered": ("f", "FILTERED"), "closed": ("o", "CLOSED")}
 
 
 def badge(state):
@@ -765,15 +767,15 @@ def badge(state):
 def render_html(rec):
     e = html.escape
     opened, filtered = rec.count("open"), rec.count("filtered") + rec.count("open|filtered")
-    cards = [("Host", str(len(rec.hosts)), len(rec.hosts), 0, ""), ("Açık port", str(opened), opened, 0, ""),
+    cards = [("Hosts", str(len(rec.hosts)), len(rec.hosts), 0, ""), ("Open ports", str(opened), opened, 0, ""),
              ("Filtered", str(filtered), filtered, 0, ""),
-             ("Süre", f"{rec.duration:.1f} sn", round(rec.duration, 1), 1, " sn")]
+             ("Duration", f"{rec.duration:.1f}s", round(rec.duration, 1), 1, "s")]
     cards_html = "".join(
         f"<div class='card spot rv'><div class='k'>{e(k)}</div>"
         f"<div class='v' data-n='{n}' data-d='{d}' data-s='{s}'>{e(t)}</div></div>" for k, t, n, d, s in cards)
     details = "".join(f"<dt>{e(k)}</dt><dd{' class=mono' if m else ''}>{e(v)}</dd>" for k, v, m in (
-        ("Profil", rec.profile, False), ("Hedef", rec.target, False),
-        ("Başlangıç", rec.started, False), ("Komut", rec.command, True)))
+        ("Profile", rec.profile, False), ("Target", rec.target, False),
+        ("Started", rec.started, False), ("Command", rec.command, True)))
 
     body = []
     if rec.kind == "hosts":
@@ -781,22 +783,22 @@ def render_html(rec):
             f"<tr style='--i:{i}'><td class='mono port'>{e(h.ip)}</td><td>{e(h.hostname or '-')}</td>"
             f"<td class='mono'>{e(h.mac or '-')}</td><td><span class='badge'><i></i>UP</span></td></tr>"
             for i, h in enumerate(rec.hosts))
-        body.append("<div class='tools rv'><h2>Canlı cihazlar</h2>"
-                    "<input id='q' type='search' placeholder='Filtrele'></div>"
+        body.append("<div class='tools rv'><h2>Live hosts</h2>"
+                    "<input id='q' type='search' placeholder='Filter'></div>"
                     "<section class='rv'><div class='tablebox spot'><div class='scroll'><table>"
-                    "<thead><tr><th>IP</th><th>Hostname</th><th>MAC</th><th>Durum</th></tr></thead>"
+                    "<thead><tr><th>IP</th><th>Hostname</th><th>MAC</th><th>State</th></tr></thead>"
                     f"<tbody>{rows}</tbody></table></div></div></section>")
     else:
-        body.append("<div class='tools rv'><h2>Tarama sonuçları</h2>"
-                    "<input id='q' type='search' placeholder='Port, servis veya sürüm ara'></div>")
+        body.append("<div class='tools rv'><h2>Scan results</h2>"
+                    "<input id='q' type='search' placeholder='Search port, service, or version'></div>")
         for h in rec.hosts:
-            info = [f"durum: {h.state}"] + ([f"os: {h.os}"] if h.os else []) + ([f"mac: {h.mac}"] if h.mac else [])
+            info = [f"state: {h.state}"] + ([f"os: {h.os}"] if h.os else []) + ([f"mac: {h.mac}"] if h.mac else [])
             name = f"<span class='info'>{e(h.hostname)}</span>" if h.hostname else ""
             head = (f"<div class='host'><span class='ip mono'>{e(h.ip)}</span>{name}"
                     f"<span class='info'>{e('   '.join(info))}</span></div>")
             if not h.rows:
                 body.append(f"<section class='rv'>{head}<div class='tablebox spot'>"
-                            "<div class='empty'>Açık port bulunamadı.</div></div></section>")
+                            "<div class='empty'>No open ports found.</div></div></section>")
                 continue
             has_script = any(r.script != "-" for r in h.rows)
             rows = "".join(
@@ -806,27 +808,27 @@ def render_html(rec):
                 for i, r in enumerate(h.rows))
             th_script = "<th>Script</th>" if has_script else ""
             body.append(f"<section class='rv'>{head}<div class='tablebox spot'><div class='scroll'><table>"
-                        "<thead><tr><th>Port</th><th>Durum</th><th>Servis</th><th>Sürüm / Banner</th>"
+                        "<thead><tr><th>Port</th><th>State</th><th>Service</th><th>Version / Banner</th>"
                         f"{th_script}</tr></thead><tbody>{rows}</tbody></table></div></div></section>")
 
-    return ("<!doctype html><html lang='tr'><head><meta charset='utf-8'>"
+    return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
             "<script>document.documentElement.classList.add('fx')</script>"
             "<link rel='preconnect' href='https://fonts.googleapis.com'>"
             "<link href='https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700"
             "&family=Manrope:wght@400;500;700;800&display=swap' rel='stylesheet'>"
-            f"<title>Vastrel Raporu - {e(clip(rec.target, 60))}</title><style>{REPORT_CSS}</style></head><body>"
+            f"<title>Vastrel Report - {e(clip(rec.target, 60))}</title><style>{REPORT_CSS}</style></head><body>"
             "<canvas id='fx'></canvas><div class='bar'></div><div class='cur' id='cur'></div><div class='dot' id='dot'></div>"
             "<div class='wrap'><header class='rv'><div><div class='brand'>VASTREL</div>"
-            "<div class='sub'>Port Scanner - Tarama Raporu</div></div>"
-            f"<div class='stamp'>Oluşturulma<b>{datetime.now().strftime('%d.%m.%Y %H:%M')}</b></div></header>"
+            "<div class='sub'>Port Scanner - Scan Report</div></div>"
+            f"<div class='stamp'>Generated<b>{datetime.now().strftime('%d.%m.%Y %H:%M')}</b></div></header>"
             f"<div class='cards'>{cards_html}</div><dl class='spot rv'>{details}</dl>{''.join(body)}"
             "<footer class='rv'><span>Made by Vastrel</span>"
-            "<span>siz yapsanıza p!cler.</span></footer>"
+            "<span>Think you can do better?</span></footer>"
             f"</div><script>{REPORT_JS}</script></body></html>")
 
 
-# ====================================================================== dışa aktarma
+# ====================================================================== export
 def csv_safe(v):
     v = str(v)
     return "'" + v if v[:1] in ("=", "+", "-", "@") else v
@@ -846,10 +848,16 @@ def export_record(rec, cfg, fmt):
     elif fmt == "csv":
         with path.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["host", "hostname", "proto", "port", "state", "service", "version", "script"])
-            for h, r in rows_of(rec):
-                w.writerow([csv_safe(x) for x in (h.ip, h.hostname, r.proto, r.port, r.state,
-                                                  r.service, r.version, r.script)])
+            if rec.kind == "hosts":
+                # Host-discovery records have no port rows, so export host info instead.
+                w.writerow(["ip", "hostname", "mac", "state"])
+                for h in rec.hosts:
+                    w.writerow([csv_safe(x) for x in (h.ip, h.hostname, h.mac, h.state)])
+            else:
+                w.writerow(["host", "hostname", "proto", "port", "state", "service", "version", "script"])
+                for h, r in rows_of(rec):
+                    w.writerow([csv_safe(x) for x in (h.ip, h.hostname, r.proto, r.port, r.state,
+                                                      r.service, r.version, r.script)])
     elif fmt == "html":
         path.write_text(render_html(rec), encoding="utf-8")
     fix_owner(out, path)
@@ -870,11 +878,11 @@ def firefox_command():
 
 
 def open_report(path):
-    """Raporu Firefox'ta aç. Dönüş: 'firefox', 'varsayılan' veya None."""
+    """Open the report in Firefox. Returns: 'firefox', 'default', or None."""
     uri = Path(path).resolve().as_uri()
     cmd = firefox_command()
     if cmd:
-        # sudo ile çalışırken Firefox root olarak açılmaz; gerçek kullanıcıya geç.
+        # When running under sudo, don't launch Firefox as root; switch to the real user.
         if sys.platform.startswith("linux") and is_admin() and os.environ.get("SUDO_USER"):
             cmd = ["sudo", "-E", "-u", os.environ["SUDO_USER"]] + cmd
         try:
@@ -885,7 +893,7 @@ def open_report(path):
             pass
     try:
         if webbrowser.open(uri):
-            return "varsayılan"
+            return "default"
     except webbrowser.Error:
         pass
     return None
@@ -897,35 +905,35 @@ def auto_report(rec, cfg):
     try:
         path = export_record(rec, cfg, "html")
     except OSError as e:
-        err(f"HTML raporu yazılamadı: {escape(str(e))}")
+        err(f"Could not write HTML report: {escape(str(e))}")
         return
     how = open_report(path)
     if how == "firefox":
-        ok("HTML raporu Firefox'ta açıldı.")
+        ok("HTML report opened in Firefox.")
     elif how:
-        warn("Firefox bulunamadı, rapor varsayılan tarayıcıda açıldı.")
+        warn("Firefox not found, report opened in the default browser.")
     else:
-        warn("Rapor oluşturuldu ancak tarayıcı açılamadı.")
-    note(f"Dosya: {escape(str(path))}")
+        warn("Report created but the browser could not be opened.")
+    note(f"File: {escape(str(path))}")
 
 
-# ====================================================================== menü akışları
+# ====================================================================== menu flows
 def confirm_authorized(state):
     if state["authorized"]:
         return True
-    state["authorized"] = ask("  [yellow]Bu hedefleri taramaktan eminmisiniz?[/]",
-                              choices=["e", "h"], default="h") == "e"
+    state["authorized"] = ask("  [yellow]Are you sure you want to scan these targets?[/]",
+                              choices=["y", "n"], default="n") == "y"
     if not state["authorized"]:
-        err("İşlem iptal edildi")
+        err("Operation cancelled")
     return state["authorized"]
 
 
 def start_scan(cfg, menu, history, state):
     if not cfg.targets:
-        err("Önce bir hedef belirleyin (menü 1).")
+        err("Set a target first (menu 1).")
         return
     menu.profiles_menu(PROFILES, is_admin(), nmap_available())
-    choice = ask("  Profil", choices=list(PROFILES) + ["0"], default="1")
+    choice = ask("  Profile", choices=list(PROFILES) + ["0"], default="1")
     if choice == "0":
         return
     prof = PROFILES[choice]
@@ -934,12 +942,12 @@ def start_scan(cfg, menu, history, state):
         err(NMAP_HELP)
         return
     if prof["root"] and not is_admin():
-        warn(f"'{prof['name']}' profili root/yönetici yetkisi ister. Programı 'sudo python3 scan.py' ile çalıştırın.")
+        warn(f"The '{prof['name']}' profile requires root/admin privileges. Run the program with 'sudo python3 scan.py'.")
         return
     if prof["ports"] == "custom":
-        p = ask("  Port listesi", default=cfg.ports).replace(" ", "")
+        p = ask("  Port list", default=cfg.ports).replace(" ", "")
         if parse_ports(p) is None:
-            err("Geçersiz port listesi. Örnek: 22,80,443,8000-8100")
+            err("Invalid port list. Example: 22,80,443,8000-8100")
             return
         cfg.ports = p
     if not confirm_authorized(state):
@@ -960,7 +968,7 @@ def start_scan(cfg, menu, history, state):
 
 def sweep_flow(cfg, history, state):
     if not cfg.targets:
-        err("Önce bir hedef belirleyin (örn. 192.168.1.0/24).")
+        err("Set a target first (e.g. 192.168.1.0/24).")
         return
     if not confirm_authorized(state):
         return
@@ -984,39 +992,39 @@ def settings_loop(cfg, menu, history):
         if c in toggles:
             setattr(cfg, toggles[c], not getattr(cfg, toggles[c]))
         elif c == "1":
-            p = ask("  Port listesi", default=cfg.ports).replace(" ", "")
+            p = ask("  Port list", default=cfg.ports).replace(" ", "")
             if parse_ports(p) is None:
-                err("Geçersiz port listesi. Örnek: 22,80,443,8000-8100")
+                err("Invalid port list. Example: 22,80,443,8000-8100")
                 pause()
             else:
                 cfg.ports = p
         elif c == "2":
             for i, n in enumerate(TIMING_NAMES):
                 console.print(f"    [bold {ACCENT}]{tag(i)}[/]  {n}")
-            cfg.timing = int(ask("  Zamanlama", choices=[str(i) for i in range(6)], default=str(cfg.timing)))
+            cfg.timing = int(ask("  Timing", choices=[str(i) for i in range(6)], default=str(cfg.timing)))
         elif c == "7":
-            cfg.threads = ask_number("Thread sayısı", int, 1, 1000, cfg.threads)
+            cfg.threads = ask_number("Thread count", int, 1, 1000, cfg.threads)
         elif c == "8":
-            cfg.timeout = ask_number("Zaman aşımı (sn)", float, 0.1, 30, cfg.timeout)
+            cfg.timeout = ask_number("Timeout (s)", float, 0.1, 30, cfg.timeout)
         elif c == "9":
-            cfg.out_dir = ask("  Rapor klasörü", default=cfg.out_dir).strip() or cfg.out_dir
+            cfg.out_dir = ask("  Report folder", default=cfg.out_dir).strip() or cfg.out_dir
 
 
 def export_flow(cfg, history):
     if not history:
-        warn("Henüz dışa aktarılacak tarama yok.")
+        warn("No scan to export yet.")
         return
     rec = pick_record(history)
     fmt = ask("  Format", choices=["html", "json", "csv"], default="html")
     try:
         path = export_record(rec, cfg, fmt)
     except OSError as e:
-        err(f"Yazılamadı: {escape(str(e))}")
+        err(f"Could not write: {escape(str(e))}")
         return
-    ok(f"Kaydedildi: {escape(str(path))}")
-    if fmt == "html" and ask("  Firefox'ta açılsın mı?", choices=["e", "h"], default="e") == "e":
+    ok(f"Saved: {escape(str(path))}")
+    if fmt == "html" and ask("  Open in Firefox?", choices=["y", "n"], default="y") == "y":
         if not open_report(path):
-            warn("Tarayıcı açılamadı.")
+            warn("Could not open browser.")
 
 
 def main():
@@ -1046,9 +1054,9 @@ def main():
             sweep_flow(cfg, history, state)
         elif choice == "5":
             if not history:
-                warn("Geçmiş boş.")
+                warn("History is empty.")
             else:
-                show_record(pick_record(history, "Görüntülenecek tarama"))
+                show_record(pick_record(history, "Scan to view"))
         elif choice == "6":
             export_flow(cfg, history)
         pause()
@@ -1058,4 +1066,4 @@ if __name__ == "__main__":
     try:
         main()
     except (KeyboardInterrupt, EOFError):
-        console.print(f"\n  [red]Çıkılıyor...[/]  [{MUTED}]Made by Vastrel[/]")
+        console.print(f"\n  [red]Exiting...[/]  [{MUTED}]Made by Vastrel[/]")
